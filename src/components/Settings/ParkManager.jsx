@@ -1,13 +1,15 @@
-// 公園の追加・編集・削除（設定タブ）
-import { useEffect, useState } from 'react';
+// 公園の追加・編集・削除・CSV取込（設定タブ）
+import { useEffect, useRef, useState } from 'react';
 import {
   addPark,
   countParkContents,
   deleteParkCascade,
+  importParks,
   isParkCodeTaken,
   suggestParkCode,
   updatePark,
 } from '../../db/db.js';
+import { decodeCsvBuffer, parseParkCsv, NAME_HEADERS } from '../../lib/parkCsv.js';
 import { isValidParkCode } from '../../lib/treeNo.js';
 import { findParkByName, parkCandidates } from '../../lib/parkName.js';
 import { getCurrentPosition, geolocationErrorMessage, formatLatLng } from '../../lib/geo.js';
@@ -19,6 +21,8 @@ export default function ParkManager({ parks, onToast, onParkDeleted, autoOpen = 
   const [form, setForm] = useState(blank);
   const [error, setError] = useState('');
   const [geoBusy, setGeoBusy] = useState(false);
+  const csvRef = useRef(null);
+  const [csvBusy, setCsvBusy] = useState(false);
 
   // 新規登録を開いたら公園コードの初期値を入れておく（考えさせない）
   useEffect(() => {
@@ -127,6 +131,39 @@ export default function ParkManager({ parks, onToast, onParkDeleted, autoOpen = 
     onToast(`${park.name} を削除しました`);
   };
 
+  // CSVから公園を一括登録する（樹木台帳メモと同じ形式のCSVを想定）
+  const handleCsv = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setCsvBusy(true);
+    setError('');
+    try {
+      const parsed = parseParkCsv(decodeCsvBuffer(await file.arrayBuffer()));
+      if (!parsed.ok) {
+        setError(parsed.reason);
+        return;
+      }
+      const ok = window.confirm(
+        `${file.name} から ${parsed.rows.length}件 の公園を読み取りました。\n` +
+          `すでに登録済みの公園は飛ばします。公園コードは続きから自動で付けます。\n\n登録しますか？`,
+      );
+      if (!ok) return;
+
+      const { added, skipped, skippedNames } = await importParks(parsed.rows);
+      onToast(`公園を ${added}件 登録しました${skipped ? `（${skipped}件は登録済みのため飛ばしました）` : ''}`);
+      if (skipped) {
+        setError(
+          `登録済みだった公園（${skipped}件）: ${skippedNames.slice(0, 5).join(' / ')}${skipped > 5 ? ' …' : ''}`,
+        );
+      }
+    } catch (err) {
+      setError(`CSVを読み込めませんでした: ${err.message ?? err}`);
+    } finally {
+      setCsvBusy(false);
+    }
+  };
+
   const sorted = [...parks].sort((a, b) =>
     String(b.lastUsedAt ?? '').localeCompare(String(a.lastUsedAt ?? '')),
   );
@@ -160,9 +197,33 @@ export default function ParkManager({ parks, onToast, onParkDeleted, autoOpen = 
       </ul>
 
       {!editing && (
-        <button type="button" className="btn btn-primary" onClick={openNew}>
-          ＋ 公園を追加
-        </button>
+        <>
+          <div className="btn-row">
+            <button type="button" className="btn btn-primary" onClick={openNew}>
+              ＋ 公園を追加
+            </button>
+            <input
+              ref={csvRef}
+              type="file"
+              accept=".csv,text/csv"
+              hidden
+              onChange={handleCsv}
+            />
+            <button
+              type="button"
+              className="btn"
+              onClick={() => csvRef.current?.click()}
+              disabled={csvBusy}
+            >
+              {csvBusy ? '読み込み中…' : '📤 CSVから取り込む'}
+            </button>
+          </div>
+          <p className="hint">
+            CSVの見出しに「{NAME_HEADERS.join(' / ')}」のいずれかがあれば公園名として読み取ります。
+            「緯度」「経度」の列があれば代表座標にも入れます。文字コードは UTF-8 と Shift_JIS
+            のどちらでも構いません（樹木台帳メモと同じ形式です）。
+          </p>
+        </>
       )}
 
       {editing && (

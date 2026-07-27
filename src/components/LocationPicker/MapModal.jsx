@@ -55,7 +55,7 @@ export default function MapModal({ lat, lng, hasPin, onCancel, onPick }) {
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <div className="modal modal-map">
         <div className="modal-head">
-          <strong>地図で確認</strong>
+          <strong>地図で位置を直す</strong>
           <button type="button" className="btn btn-ghost" onClick={onCancel}>
             閉じる
           </button>

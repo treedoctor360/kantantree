@@ -1,6 +1,7 @@
 // 端末内DB（IndexedDB）の定義。Dexie は IndexedDB の薄いラッパー。
 import Dexie from 'dexie';
 import { nextParkCode, nextTreeNo, renameTreeNoPrefix } from '../lib/treeNo.js';
+import { findParkByName } from '../lib/parkName.js';
 
 export const db = new Dexie('kantantree');
 
@@ -84,6 +85,57 @@ export async function addPark({ code, name, lat = null, lng = null, note = '' })
   };
   await db.parks.add(park);
   return park;
+}
+
+/**
+ * CSVから読んだ公園をまとめて登録する（単一トランザクション）。
+ * 既にある公園（名前の正規化キーが一致）は飛ばす。公園コードは続きから自動採番。
+ * @returns {{added:number, skipped:number, skippedNames:string[]}}
+ */
+export async function importParks(rows) {
+  let added = 0;
+  const skippedNames = [];
+  await db.transaction('rw', db.parks, async () => {
+    const existing = await db.parks.toArray();
+    const codes = existing.map((p) => p.code);
+    const pool = [...existing];
+    const toAdd = [];
+    const t = nowIso();
+    // 公園の並びは最終使用日時の降順。全部同じ日時にすると順序が不定になるので、
+    // CSVの行順がそのまま並び順になるよう1秒ずつずらす。
+    const base = Date.now();
+    let i = 0;
+
+    for (const row of rows) {
+      const name = String(row.name ?? '').trim();
+      if (!name) continue;
+      if (findParkByName(pool, name)) {
+        skippedNames.push(name);
+        continue;
+      }
+      const code = nextParkCode(codes);
+      codes.push(code);
+      const park = {
+        id: uid(),
+        code,
+        name,
+        lat: Number.isFinite(row.lat) ? row.lat : null,
+        lng: Number.isFinite(row.lng) ? row.lng : null,
+        note: '',
+        // parktreenote 側が持っているID（プリザンター等）。あれば残しておく
+        pid: row.pid || '',
+        lastUsedAt: new Date(base - i * 1000).toISOString(),
+        createdAt: t,
+        updatedAt: t,
+      };
+      toAdd.push(park);
+      pool.push(park);
+      added += 1;
+      i += 1;
+    }
+    if (toAdd.length) await db.parks.bulkAdd(toAdd);
+  });
+  return { added, skipped: skippedNames.length, skippedNames };
 }
 
 /**

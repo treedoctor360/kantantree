@@ -5,7 +5,8 @@ import { resizePhoto } from '../../lib/image.js';
 const MAX_PHOTOS = 3;
 
 export default function PhotoInput({ photos = [], onChange }) {
-  const inputRef = useRef(null);
+  const cameraRef = useRef(null); // capture付き = その場で撮影
+  const albumRef = useRef(null); // capture無し = アルバム／ファイルから選ぶ
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -38,24 +39,34 @@ export default function PhotoInput({ photos = [], onChange }) {
         写真 <span className="muted">（{photos.length}/{MAX_PHOTOS}）</span>
       </h3>
 
+      {/* 撮影用（背面カメラが直接開く） */}
       <input
-        ref={inputRef}
+        ref={cameraRef}
         type="file"
         accept="image/*"
         capture="environment"
-        multiple
         hidden
         onChange={handleFiles}
       />
+      {/* アルバム用（capture を付けない。iOSでは「フォトライブラリ」等が選べる） */}
+      <input ref={albumRef} type="file" accept="image/*" multiple hidden onChange={handleFiles} />
 
       <div className="btn-row">
         <button
           type="button"
           className="btn"
-          onClick={() => inputRef.current?.click()}
+          onClick={() => cameraRef.current?.click()}
           disabled={busy || photos.length >= MAX_PHOTOS}
         >
           {busy ? '処理中…' : '📷 撮影'}
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => albumRef.current?.click()}
+          disabled={busy || photos.length >= MAX_PHOTOS}
+        >
+          🖼 アルバムから
         </button>
       </div>
 

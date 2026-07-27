@@ -12,6 +12,7 @@ import {
   formatLatLng,
   isValidLat,
   isValidLng,
+  mapUrl,
   SOURCE_LABEL,
 } from '../../lib/geo.js';
 import MapModal from './MapModal.jsx';
@@ -148,8 +149,19 @@ export default function LocationPicker({ value, onChange, fallbackCenter }) {
             クリア
           </button>
         )}
+        {/* v27 と同じく、Googleマップ（スマホならアプリ）で開いて目視確認する */}
+        {hasCoord && !latBad && !lngBad && (
+          <a
+            className="linklike"
+            href={mapUrl(lat, lng)}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            地図で確認
+          </a>
+        )}
         <button type="button" className="linklike" onClick={() => setMapOpen(true)}>
-          地図で確認
+          地図で位置を直す
         </button>
       </div>
 
