@@ -9,7 +9,7 @@ import {
   updatePark,
 } from '../../db/db.js';
 import { isValidParkCode } from '../../lib/treeNo.js';
-import { getCurrentPosition, geolocationErrorMessage, round6 } from '../../lib/geo.js';
+import { getCurrentPosition, geolocationErrorMessage, formatLatLng } from '../../lib/geo.js';
 
 const blank = { code: '', name: '', lat: null, lng: null, note: '' };
 
@@ -124,7 +124,7 @@ export default function ParkManager({ parks, onToast, onParkDeleted, autoOpen = 
               <strong>{p.name}</strong>
               <span className="muted">
                 {p.code}
-                {Number.isFinite(p.lat) ? ` / ${round6(p.lat)}, ${round6(p.lng)}` : ' / 代表座標なし'}
+                {Number.isFinite(p.lat) ? ` / ${formatLatLng(p.lat, p.lng)}` : ' / 代表座標なし'}
               </span>
             </span>
             <span className="row-actions">
@@ -180,7 +180,7 @@ export default function ParkManager({ parks, onToast, onParkDeleted, autoOpen = 
             )}
           </div>
           <p className="hint">
-            代表座標{Number.isFinite(form.lat) ? `: ${round6(form.lat)}, ${round6(form.lng)}` : 'は地図タブの初期表示に使います（任意）'}
+            代表座標{Number.isFinite(form.lat) ? `: ${formatLatLng(form.lat, form.lng)}` : 'は地図タブの初期表示に使います（任意）'}
           </p>
           <label className="field">
             <span className="field-label">メモ（任意）</span>

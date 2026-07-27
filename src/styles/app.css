@@ -231,12 +231,40 @@ textarea {
   padding: 4px 0;
 }
 
-/* --- 座標ブロック --- */
-.coord-echo {
+/* --- 座標ブロック（クラス名は v27 の GeoField に合わせている） --- */
+.gps-row {
+  display: flex;
+  gap: 8px;
+}
+.geo-field .gps-row input {
+  flex: 1;
+  min-width: 0;
+}
+.geo-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.geo-paste {
+  flex: 1;
+  min-width: 160px;
+}
+.geo-status {
   margin: 6px 0 0;
   font-size: 14px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+.geo-field input[aria-invalid='true'] {
+  border-color: var(--danger);
+  background: #fff5f5;
+}
+.geo-err {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--danger);
 }
 .link-row {
   display: flex;

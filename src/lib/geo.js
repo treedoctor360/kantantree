@@ -1,17 +1,134 @@
-// 現在地の取得と、Googleマップのリンク／貼り付け文字列からの座標抽出。
+// 座標の解釈と整形（DOM非依存の純粋関数）＋ 現在地の取得。
+//
+// 前半（isValidLat 〜 parseLatLng）は v27 の src/logic/geo.js をそのまま持ってきている。
+// 関数名・戻り値の形（{ok, lat, lng} / {ok:false, reason}）も v27 に合わせてあるので、
+// 向こうを直したらこちらにも反映すること。
+//
+// 想定する貼り付け元:
+//   - Googleマップのリンク（アドレスバーのURL）
+//   - 「35.011600, 135.768100」のような緯度経度ペア
+//   - 度分秒表記「35°00'41.8"N 135°46'05.2"E」
 
-/** 表示用に6桁へ丸める（保持する値はフル桁のまま） */
-export function round6(n) {
-  if (n === null || n === undefined || Number.isNaN(Number(n))) return '';
-  return Number(n).toFixed(6);
+export const isValidLat = (v) => Number.isFinite(v) && v >= -90 && v <= 90;
+export const isValidLng = (v) => Number.isFinite(v) && v >= -180 && v <= 180;
+
+// 表示用に桁を丸める。末尾の余分な0は落とす（35.012000 → 35.012）。
+export function formatCoord(v, digits = 6) {
+  // 空文字は Number('') === 0 になってしまうため、数値化する前に弾く
+  if (v == null || String(v).trim() === '') return '';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '';
+  return String(Number(n.toFixed(digits)));
 }
 
-export const isValidLat = (n) => Number.isFinite(n) && n >= -90 && n <= 90;
-export const isValidLng = (n) => Number.isFinite(n) && n >= -180 && n <= 180;
+export function formatLatLng(lat, lng, digits = 6) {
+  const a = formatCoord(lat, digits);
+  const b = formatCoord(lng, digits);
+  return a && b ? `${a}, ${b}` : '';
+}
+
+// 座標を地図で目視確認するためのGoogleマップURL。
+export function mapUrl(lat, lng) {
+  return `https://www.google.com/maps?q=${formatCoord(lat)},${formatCoord(lng)}`;
+}
+
+const num = (s) => Number(String(s).trim());
+
+// 度分秒（35°00'41.8"N / N35°00'41.8" …）。全角の「度分秒」やプライム記号にも対応。
+// 半球記号（N/S/E/W）は空白を挟まず隣接している側の座標に属するとみなす。
+// そのため末尾側（グループ5）の前には \s* を置かない。これを許すと
+// 「E135°46'05.2" N35°00'41.8"」の N を1つ目の末尾記号として食ってしまう。
+const DMS_RE = /([NSEW])?\s*(\d{1,3})\s*[°度]\s*(\d{1,2})\s*[′'’分]\s*([\d.]+)\s*[″"”秒]?([NSEW])?/gi;
+
+function dmsToDeg(d, m, s, hemi) {
+  const v = Math.abs(d) + m / 60 + s / 3600;
+  return /[SW]/i.test(hemi || '') ? -v : v;
+}
+
+function parseDms(text) {
+  const hits = [...String(text).matchAll(DMS_RE)];
+  if (hits.length < 2) return null;
+  const vals = hits.slice(0, 2).map((h) => {
+    const hemi = h[1] || h[5] || '';
+    return { deg: dmsToDeg(num(h[2]), num(h[3]), num(h[4]), hemi), hemi: hemi.toUpperCase() };
+  });
+  // 半球記号（N/S/E/W）があればそれで緯度・経度を決める。無ければ「緯度→経度」の順とみなす。
+  const lat = vals.find((v) => v.hemi === 'N' || v.hemi === 'S') || vals[0];
+  let lng = vals.find((v) => v.hemi === 'E' || v.hemi === 'W');
+  // 緯度に選んだものと同じになった場合（記号が片方しか無い等）は残りを経度にする
+  if (!lng || lng === lat) lng = vals.find((v) => v !== lat);
+  if (!lat || !lng) return null;
+  return { lat: lat.deg, lng: lng.deg };
+}
+
+// URLから座標を拾う。優先度: 明示クエリ(q/ll等) > ピン位置(!3d!4d) > 表示中心(@)
+// 表示中心(@)は「地図の中心」であってピンとは限らないため最後に見る。
+function parseUrl(text) {
+  const s = String(text);
+  const pairs = [
+    /[?&](?:q|ll|center|daddr|saddr|sll|mlat)=(-?\d{1,3}(?:\.\d+)?)[,%2C]+\s*(-?\d{1,3}(?:\.\d+)?)/i,
+    /!3d(-?\d{1,3}(?:\.\d+)?)!4d(-?\d{1,3}(?:\.\d+)?)/,
+    /@(-?\d{1,3}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)/,
+  ];
+  for (const re of pairs) {
+    const m = s.match(re);
+    if (m) return { lat: num(m[1]), lng: num(m[2]) };
+  }
+  return null;
+}
+
+// 「35.0116, 135.7681」「35.0116/135.7681」「35.0116 135.7681」
+function parseDecimalPair(text) {
+  const m = String(text).match(/(-?\d{1,3}(?:\.\d+)?)\s*[,、/\s]\s*(-?\d{1,3}(?:\.\d+)?)/);
+  return m ? { lat: num(m[1]), lng: num(m[2]) } : null;
+}
+
+/**
+ * 座標らしき文字列を解釈する。Googleマップのリンク／緯度経度ペア／度分秒に対応。
+ * @param {string} text
+ * @returns {{ok:true, lat:number, lng:number} | {ok:false, reason:string}}
+ */
+export function parseLatLng(text) {
+  const s = String(text || '').trim();
+  if (!s) return { ok: false, reason: '座標が入力されていません。' };
+  // 短縮URLはブラウザからリダイレクト先を読めない（CORS制限）。展開後のURLを貼ってもらう。
+  if (/(maps\.app\.goo\.gl|goo\.gl\/maps)/i.test(s)) {
+    return {
+      ok: false,
+      reason:
+        '短縮リンクは展開できません。マップで開き直して、アドレスバーのURLか緯度経度を貼り付けてください。',
+    };
+  }
+  const hit =
+    (/https?:\/\//i.test(s) ? parseUrl(s) : null) || parseDms(s) || parseUrl(s) || parseDecimalPair(s);
+  if (!hit) {
+    return {
+      ok: false,
+      reason: '座標を読み取れませんでした（例: 35.011600, 135.768100 / Googleマップのリンク）。',
+    };
+  }
+  if (!isValidLat(hit.lat) || !isValidLng(hit.lng)) {
+    return {
+      ok: false,
+      reason:
+        '数値が範囲外です（緯度 -90〜90、経度 -180〜180）。緯度と経度が逆になっていないか確認してください。',
+    };
+  }
+  return { ok: true, lat: hit.lat, lng: hit.lng };
+}
+
+// ------------------------------------------------------------------
+// ここから下は本アプリ固有。v27 では GeoField.jsx の中に直接書かれている部分を
+// 関数として切り出したもの。
+// ------------------------------------------------------------------
+
+/** 座標をどの経路で入れたか（tree.coordSource）の表示名 */
+export const SOURCE_LABEL = { gps: '現在地', manual: '手入力', link: '貼り付け', map: '地図' };
 
 /**
  * 現在地を取得する。
  * enableHighAccuracy: GPSを使う / timeout: 10秒 / maximumAge: 0（キャッシュを使わない）
+ * ※ v27 は timeout 15秒・maximumAge 指定なし。本アプリは CLAUDE.md 3-2 の指定に従う。
  */
 export function getCurrentPosition() {
   return new Promise((resolve, reject) => {
@@ -32,56 +149,20 @@ export function getCurrentPosition() {
   });
 }
 
-/** 位置情報エラーを日本語のメッセージにする */
+/** 位置情報エラーを日本語のメッセージにする（CLAUDE.md 3-2: 許可拒否／タイムアウト／取得不可） */
 export function geolocationErrorMessage(err) {
+  const tail = '手入力・貼り付けでも登録できます。';
   if (err?.message === 'NO_GEOLOCATION') {
-    return 'この端末／ブラウザでは位置情報を取得できません。';
+    return `この端末では位置情報を取得できません。${tail}`;
   }
   switch (err?.code) {
     case 1: // PERMISSION_DENIED
-      return '位置情報の利用が許可されていません。ブラウザの設定で許可してください。';
+      return `位置情報の利用が許可されていません。ブラウザの設定で許可してください。${tail}`;
     case 2: // POSITION_UNAVAILABLE
-      return '位置情報を取得できませんでした。空の見える場所で試してください。';
+      return `位置情報を取得できませんでした。空の見える場所で試してください。${tail}`;
     case 3: // TIMEOUT
-      return '位置情報の取得がタイムアウトしました。もう一度お試しください。';
+      return `位置情報の取得がタイムアウトしました。もう一度お試しください。${tail}`;
     default:
-      return '位置情報を取得できませんでした。';
+      return `位置情報を取得できませんでした。${tail}`;
   }
-}
-
-/**
- * 貼り付けられた文字列から緯度経度を取り出す。
- * 対応形式:
- *   https://maps.google.com/?q=35.0177,135.8546
- *   .../@35.0177,135.8546,18z
- *   ...!3d35.0177!4d135.8546
- *   35.0177, 135.8546（座標のみのベタ貼り）
- * 取り出せなければ null。
- */
-export function parseLatLngFromText(text) {
-  if (!text || typeof text !== 'string') return null;
-  const s = text.trim();
-
-  const patterns = [
-    /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/, // 共有リンクの中の実座標
-    /@(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/, // 地図表示位置
-    /[?&](?:q|query|ll|sll|daddr|destination)=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/i,
-    /(-?\d{1,3}(?:\.\d+)?)\s*[,、]\s*(-?\d{1,3}(?:\.\d+)?)/, // ベタ貼り
-  ];
-
-  for (const re of patterns) {
-    const m = re.exec(s);
-    if (!m) continue;
-    const lat = Number(m[1]);
-    const lng = Number(m[2]);
-    if (isValidLat(lat) && isValidLng(lng)) return { lat, lng };
-  }
-  return null;
-}
-
-/** 座標の入力元を日本語ラベルにする */
-export function coordSourceLabel(source) {
-  return (
-    { gps: '現在地', map: '地図で補正', manual: '手入力', link: 'リンクから読み取り' }[source] ?? ''
-  );
 }
