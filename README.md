@@ -1,0 +1,86 @@
+# かんたん樹木登録（kantantree）
+
+作業中に「この木、番号を振っておきたい」と思った瞬間に、3タップで1本を登録するための道具。
+点検・診断はしない。位置・樹種・番号・写真だけを残す。
+
+仕様は [CLAUDE.md](./CLAUDE.md) にまとめてある。
+
+---
+
+## ターミナル操作
+
+```bash
+# 1. 依存を入れる（最初の1回だけ）
+npm install
+
+# 2. 開発サーバを起動する
+npm run dev
+#    → http://localhost:5173/kantantree/ が開く
+
+# 3. 採番などのテストを走らせる
+npm test
+
+# 4. 本番用にビルドする（dist/ ができる）
+npm run build
+
+# 5. ビルドしたものを手元で確認する
+npm run preview
+```
+
+スマホの実機で試すときは、パソコンと同じWi-Fiにつないで次のように起動する。
+
+```bash
+npm run dev -- --host
+#    → 表示された http://192.168.x.x:5173/kantantree/ をスマホで開く
+```
+
+> 位置情報（GPS）と カメラ は、`https://` か `localhost` でないとブラウザが使わせてくれない。
+> 実機でGPSまで試したいときは、GitHub Pages に上げたものを開くのが早い。
+
+---
+
+## 公開（GitHub Pages）
+
+`main` ブランチに push すると `.github/workflows/deploy.yml` が動いて公開される。
+最初の1回だけ、GitHub の **Settings → Pages → Build and deployment → Source** を
+**GitHub Actions** にしておくこと。
+
+公開先: `https://<ユーザー名>.github.io/kantantree/`
+
+---
+
+## 構成
+
+```
+src/
+├─ db/db.js                    Dexie（IndexedDB）の定義と読み書き
+├─ lib/
+│   ├─ treeNo.js               公園コード・樹木番号の採番（純粋関数）
+│   ├─ geo.js                  現在地の取得・Googleマップリンクの座標抽出
+│   ├─ image.js                写真の縮小（長辺1280 / 品質0.7）
+│   └─ io.js                   JSON / CSV / GeoJSON の書き出しと取込マージ
+├─ components/
+│   ├─ RegisterForm/           登録タブ
+│   ├─ LocationPicker/         座標ブロック（＋地図モーダル）
+│   ├─ SpeciesTiles/           樹種タイル
+│   ├─ PhotoInput/             写真
+│   ├─ TreeList/               一覧タブ
+│   ├─ MapView/                地図タブ
+│   └─ Settings/               設定タブ（公園管理・樹種マスタ・バックアップ）
+└─ styles/app.css
+test/                          node --test で走る採番・座標・書き出しのテスト
+```
+
+## データの持ち方
+
+- 保存先は端末内の IndexedDB。クラウド同期はしない。
+- 端末を替えるときは、設定タブの **JSON（フル・写真込み）** を書き出して、
+  新しい端末で **JSONを読み込む** を実行する。
+- 読み込みは「追記マージ」。同じ `id` は更新日時の新しい方を採用し、知らない `id` は追加する。
+  実行前に「追加◯件 / 更新◯件」を確認ダイアログで出す。
+- バックアップを取らないまま端末を初期化するとデータは戻らない。設定タブに
+  「最終バックアップから◯日」を出しているので、ときどき書き出しておくこと。
+
+---
+
+© 2026 Koh Kitsukawa. All rights reserved.
