@@ -163,10 +163,10 @@ export default function BackupPanel({ onToast }) {
 
       <div className="btn-grid">
         <button type="button" className="btn btn-primary" onClick={exportFullJson} disabled={busy}>
-          JSON（フル・写真込み）
+          JSON 写真あり
         </button>
         <button type="button" className="btn" onClick={exportLightJson} disabled={busy}>
-          JSON（軽量・写真なし）
+          JSON 写真なし
         </button>
         <button type="button" className="btn" onClick={exportCsv} disabled={busy}>
           CSV
@@ -175,10 +175,19 @@ export default function BackupPanel({ onToast }) {
           GeoJSON
         </button>
       </div>
+      <p className="hint">
+        「写真あり」が端末を移すときのフルバックアップ。「写真なし」は他のアプリへの受け渡し用。
+        CSVはExcel（UTF-8 BOM付き）、GeoJSONは座標のある樹木だけ。
+      </p>
 
       <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={handleImport} />
       <div className="btn-row">
-        <button type="button" className="btn" onClick={() => fileRef.current?.click()} disabled={busy}>
+        <button
+          type="button"
+          className="btn btn-wrap"
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+        >
           JSONを読み込む（追記マージ）
         </button>
       </div>

@@ -77,6 +77,44 @@ function parseUrl(text) {
   return null;
 }
 
+// 半球記号。日本語（北南東西）と英字（NSEW）のどちらでも受ける。
+const HEMI = { 北: 'N', 南: 'S', 東: 'E', 西: 'W', N: 'N', S: 'S', E: 'E', W: 'W' };
+
+// 度だけの表記（分秒なし）。iOSの「マップ」やGPSアプリがこの形で出す。
+//   「北35.01394°, 東135.85369°」「N35.01394 E135.85369」「35.01394°, 135.85369°」
+// 英字の半球記号は大文字だけ見る（URL中の小文字の e や n を拾わないため）。
+// 末尾側（グループ3）の前に \s* を置かないのは parseDms と同じ理由。これを許すと
+// 「35.01394度 東135.85369度」の「東」を1つ目の末尾記号として食ってしまう。
+const DEG_TOKEN = /([北南東西NSEW])?\s*(-?\d{1,3}(?:\.\d+)?)\s*[°度]?([北南東西NSEW])?/g;
+
+function parseDecimalDegrees(text) {
+  // 「北緯」「東経」は「北」「東」と同じ扱いにする
+  const s = String(text).trim().replace(/[緯経]/g, '');
+  // 分秒があるものは parseDms に任せる
+  if (/[′'’分″"”秒]/.test(s)) return null;
+  // 半球記号か度記号が無ければ、ただの数字の並びなので parseDecimalPair に任せる
+  if (!/[北南東西NSEW°度]/.test(s)) return null;
+
+  const vals = [];
+  for (const m of s.matchAll(DEG_TOKEN)) {
+    if (m[2] === undefined) continue;
+    const mark = m[1] || m[3] || '';
+    vals.push({ deg: Number(m[2]), hemi: HEMI[mark] ?? '' });
+  }
+  if (vals.length < 2) return null;
+
+  const two = vals.slice(0, 2);
+  const signed = (v) => (v.hemi === 'S' || v.hemi === 'W' ? -Math.abs(v.deg) : v.deg);
+  // 半球記号があればそれで緯度・経度を決める。無ければ「緯度→経度」の順とみなす。
+  let lat = two.find((v) => v.hemi === 'N' || v.hemi === 'S');
+  let lng = two.find((v) => v.hemi === 'E' || v.hemi === 'W');
+  if (!lat && !lng) [lat, lng] = two;
+  else if (!lat) lat = two.find((v) => v !== lng);
+  else if (!lng) lng = two.find((v) => v !== lat);
+  if (!lat || !lng) return null;
+  return { lat: signed(lat), lng: signed(lng) };
+}
+
 // 「35.0116, 135.7681」「35.0116/135.7681」「35.0116 135.7681」
 function parseDecimalPair(text) {
   const m = String(text).match(/(-?\d{1,3}(?:\.\d+)?)\s*[,、/\s]\s*(-?\d{1,3}(?:\.\d+)?)/);
@@ -100,11 +138,16 @@ export function parseLatLng(text) {
     };
   }
   const hit =
-    (/https?:\/\//i.test(s) ? parseUrl(s) : null) || parseDms(s) || parseUrl(s) || parseDecimalPair(s);
+    (/https?:\/\//i.test(s) ? parseUrl(s) : null) ||
+    parseDms(s) ||
+    parseDecimalDegrees(s) ||
+    parseUrl(s) ||
+    parseDecimalPair(s);
   if (!hit) {
     return {
       ok: false,
-      reason: '座標を読み取れませんでした（例: 35.011600, 135.768100 / Googleマップのリンク）。',
+      reason:
+        '座標を読み取れませんでした（例: 35.011600, 135.768100 / 北35.01394°, 東135.85369° / Googleマップのリンク）。',
     };
   }
   if (!isValidLat(hit.lat) || !isValidLng(hit.lng)) {

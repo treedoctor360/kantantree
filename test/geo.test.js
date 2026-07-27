@@ -48,6 +48,47 @@ test('parseLatLng: 度分秒（半球記号あり・順序が逆でも緯経を�
   assert.ok(s.ok && near(s.lat, -35.0116) && near(s.lng, -135.768111));
 });
 
+test('parseLatLng: 度のみ＋日本語の半球記号（北・東）', () => {
+  const a = parseLatLng('北35.01394°, 東135.85369°');
+  assert.equal(a.ok, true);
+  assert.ok(near(a.lat, 35.01394) && near(a.lng, 135.85369));
+
+  // 南・西はマイナスになる
+  const b = parseLatLng('南35.01394°, 西135.85369°');
+  assert.ok(near(b.lat, -35.01394) && near(b.lng, -135.85369));
+
+  // 経度→緯度の順で書かれていても記号で判別する
+  const c = parseLatLng('東135.85369° 北35.01394°');
+  assert.ok(near(c.lat, 35.01394) && near(c.lng, 135.85369));
+});
+
+test('parseLatLng: 度のみ＋英字の半球記号／度記号だけ', () => {
+  const a = parseLatLng('N35.01394 E135.85369');
+  assert.ok(a.ok && near(a.lat, 35.01394) && near(a.lng, 135.85369));
+
+  const b = parseLatLng('35.01394°, 135.85369°');
+  assert.ok(b.ok && near(b.lat, 35.01394) && near(b.lng, 135.85369));
+
+  // 「度」表記
+  const c = parseLatLng('北緯35.01394度 東経135.85369度');
+  assert.ok(c.ok && near(c.lat, 35.01394) && near(c.lng, 135.85369));
+});
+
+test('parseLatLng: 度のみ表記でもフル桁を落とさない', () => {
+  const r = parseLatLng('北35.01776443639602°, 東135.85462927807734°');
+  assert.equal(r.lat, 35.01776443639602);
+  assert.equal(r.lng, 135.85462927807734);
+});
+
+test('parseLatLng: 度のみ表記が既存の形式を壊さない', () => {
+  // 度分秒はこれまでどおり
+  const dms = parseLatLng('35°00\'41.8"N 135°46\'05.2"E');
+  assert.ok(dms.ok && near(dms.lat, 35.0116) && near(dms.lng, 135.768111));
+  // URLはこれまでどおり（小文字の e や n を半球記号と誤解しない）
+  const url = parseLatLng('https://www.google.com/maps?q=35.011600,135.768100');
+  assert.ok(url.ok && near(url.lat, 35.0116) && near(url.lng, 135.7681));
+});
+
 test('parseLatLng: 短縮リンクは読めない旨を返す', () => {
   const r = parseLatLng('https://maps.app.goo.gl/abcdefg');
   assert.equal(r.ok, false);

@@ -72,6 +72,8 @@ body {
 .main {
   flex: 1 1 auto;
   overflow-y: auto;
+  /* 横には絶対にスクロールさせない（1箇所でも幅を超えると画面全体がずれるため） */
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
 }
 .pane {
@@ -213,9 +215,19 @@ textarea {
 }
 .btn-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0,1fr) にしないと、中身の幅（nowrapの長いラベル）で列が広がって画面をはみ出す */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 8px;
+}
+/* 長いラベルのボタンは折り返してよい（はみ出すより2行の方がよい） */
+.btn-grid .btn,
+.btn-wrap {
+  white-space: normal;
+  min-width: 0;
+  line-height: 1.3;
+  padding-left: 8px;
+  padding-right: 8px;
 }
 .linklike {
   border: 0;
