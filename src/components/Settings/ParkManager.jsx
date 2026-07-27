@@ -9,6 +9,7 @@ import {
   updatePark,
 } from '../../db/db.js';
 import { isValidParkCode } from '../../lib/treeNo.js';
+import { findParkByName, parkCandidates } from '../../lib/parkName.js';
 import { getCurrentPosition, geolocationErrorMessage, formatLatLng } from '../../lib/geo.js';
 
 const blank = { code: '', name: '', lat: null, lng: null, note: '' };
@@ -65,6 +66,25 @@ export default function ParkManager({ parks, onToast, onParkDeleted, autoOpen = 
     if (!isValidParkCode(code)) return setError('公園コードは半角英数とハイフンだけが使えます。');
     if (await isParkCodeTaken(code, editing.id ?? null)) {
       return setError(`公園コード ${code} はすでに使われています。`);
+    }
+
+    // 公園名の表記ゆれ照合（parktreenote 由来）。
+    // 「皇子が丘公園」と「皇子ヶ丘公園」のような二重登録を止める。
+    const same = findParkByName(parks, name, editing.id ?? null);
+    if (same) {
+      setError(`「${same.name}」（${same.code}）と同じ公園に見えます。別名で登録するか、既存の公園を編集してください。`);
+      return;
+    }
+    if (!editing.id) {
+      const cands = parkCandidates(parks, name);
+      if (cands.length) {
+        const ok = window.confirm(
+          `「${name}」は既存の公園と名前が似ています。\n` +
+            `　近い公園: ${cands.join(' / ')}\n\n` +
+            `別の公園として新しく登録しますか？`,
+        );
+        if (!ok) return;
+      }
     }
 
     if (!editing.id) {
